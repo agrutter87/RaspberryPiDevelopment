@@ -49,6 +49,13 @@ bool TFMini::begin(unsigned int _mode, unsigned int _framerate_hz)
 		    break;
 		
 		case TFMINI_MODE_I2C:
+			/* Open WiringPi I2C */
+			wiringpi_fd = wiringPiI2CSetup(TFMINI_I2C_ADDRESS);
+			if(wiringpi_fd == -1)
+			{
+				status = false;
+				printf("Error finding I2C address 0x%x\n", TFMINI_I2C_ADDRESS);
+			}
 		    break;
 			
 		default:
@@ -60,11 +67,14 @@ bool TFMini::begin(unsigned int _mode, unsigned int _framerate_hz)
 	{
 		printf("Serial port opened successfully\n");
 
-		// Disable output on startup to make it easier to parse init command responses
-		disableOutput();
+		if(mode == TFMINI_MODE_UART)
+		{
+			// Disable output on startup to make it easier to parse init command responses
+			disableOutput();
 
-		// Wait to allow for clearing of buffer
-		delay(100);
+			// Wait to allow for clearing of buffer
+			delay(100);
+		}
 
 		// Print the firmware version
 		printFirmwareVersion();
@@ -75,16 +85,19 @@ bool TFMini::begin(unsigned int _mode, unsigned int _framerate_hz)
 		// Delay before beginning
 		delay(1000);
 
-		enableOutput();
+		if(mode == TFMINI_MODE_UART)
+		{
+			enableOutput();
+		}
 	}
 
     return status;
 }
 
 /********************************************************************************************
- * TFMini::read
+ * TFMini::getReadings
  *******************************************************************************************/
-bool TFMini::read(uint16_t * _distance, uint16_t * _strength)
+bool TFMini::getReadings(uint16_t * _distance, uint16_t * _strength)
 {
     int numMeasurementAttempts = 0;
     while (takeMeasurement() != 0)
@@ -148,11 +161,48 @@ void TFMini::enableOutput(void)
  *******************************************************************************************/
 void TFMini::triggerDetection(void)
 {
+	switch(mode)
+	{
+		case TFMINI_MODE_UART:
+			triggerDetectionUART();
+			break;
+		case TFMINI_MODE_I2C:
+			triggerDetectionI2C();
+			break;
+		default:
+			break;
+	}
+}
+
+/********************************************************************************************
+ * TFMini::triggerDetectionUART
+ *******************************************************************************************/
+void TFMini::triggerDetectionUART(void)
+{
     serialFlush(wiringpi_fd);
     serialPutchar(wiringpi_fd, (unsigned char)0x5A);
     serialPutchar(wiringpi_fd, (unsigned char)0x04);
     serialPutchar(wiringpi_fd, (unsigned char)0x04);
     serialPutchar(wiringpi_fd, (unsigned char)0x62);
+}
+
+/********************************************************************************************
+ * TFMini::triggerDetectionI2C
+ *******************************************************************************************/
+void TFMini::triggerDetectionI2C(void)
+{
+	unsigned char write_buf[] =
+	{
+		0x5A,
+		0x04,
+		0x04,
+		0x62
+	};
+	
+	write(wiringpi_fd, write_buf, 4);
+	
+	/* Need to delay after every I2C command */
+	delay(100);
 }
 
 /********************************************************************************************
@@ -227,7 +277,46 @@ void TFMini::setFrameRateUART(unsigned int framerate_hz)
  *******************************************************************************************/
 void TFMini::setFrameRateI2C(unsigned int framerate_hz)
 {
-	return;
+    uint8_t lsb = (uint8_t)framerate_hz;
+    uint8_t msb = (uint8_t)(framerate_hz >> 8);
+    uint8_t checksum = 0x5A + 0x06 + 0x03 + lsb + msb;
+
+    uint8_t response[6];
+    uint8_t resp_checksum = 0;
+	
+	unsigned char write_buf[] =
+	{
+		0x5A,
+		0x06,
+		0x03,
+		(framerate_hz & 0xFF),
+		((framerate_hz >> 8) & 0xFF),
+		checksum
+	};
+
+	write(wiringpi_fd, write_buf, 6);
+
+	/* Need to delay after every I2C command */
+	delay(100);
+
+	read(wiringpi_fd, response, 6);
+	
+    for (int i=0; i<5; i++)
+    {
+		resp_checksum += response[i];
+    }
+
+    if (resp_checksum != response[5])
+    {
+        state = ERROR_SERIAL_BADCHECKSUM;
+        distance = -1;
+        strength = -1;
+        if (TFMINI_DEBUGMODE == 1) printf("ERROR: bad checksum. calculated = 0x%x, received = 0x%x, difference = 0x%x\n", checksum, response[6], response[6] - checksum);
+        return;
+    }
+
+    framerate = framerate_hz;
+    printf("Framerate updated to %d Hz\n", framerate_hz);
 }
 
 /********************************************************************************************
@@ -295,7 +384,38 @@ void TFMini::printFirmwareVersionUART(void)
  *******************************************************************************************/
 void TFMini::printFirmwareVersionI2C(void)
 {
-	return;
+    uint8_t response[7];
+    uint8_t checksum = 0;
+
+	unsigned char write_buf[] =
+	{
+		0x5A,
+		0x04,
+		0x01,
+		0x5F
+	};
+
+	write(wiringpi_fd, write_buf, 4);
+	
+	delay(100);
+	
+	read(wiringpi_fd, response, 7);
+
+    for (int i=0; i<6; i++)
+    {
+		checksum += response[i];
+    }
+
+    if (checksum != response[6])
+    {
+        state = ERROR_SERIAL_BADCHECKSUM;
+        distance = -1;
+        strength = -1;
+        if (TFMINI_DEBUGMODE == 1) printf("ERROR: bad checksum. calculated = 0x%x, received = 0x%x, difference = 0x%x\n", checksum, response[6], response[6] - checksum);
+        return;
+    }
+
+    printf("Firmware version is V%d.%d.%d\n", response[5], response[4], response[3]);
 }
 
 /********************************************************************************************
@@ -417,5 +537,63 @@ int TFMini::takeMeasurementUART(void)
  *******************************************************************************************/
 int TFMini::takeMeasurementI2C(void)
 {
-	return 0;
+	unsigned char response[9] = { 0 };
+	uint8_t checksum = 0;
+
+    if(framerate == 0)
+    {
+        // Trigger measurement
+        triggerDetection();
+    }
+	else
+	{
+		unsigned char write_buf[] =
+		{
+			0x5A,
+			0x05,
+			0x00,
+			0x01,
+			0x60
+		};
+		
+		/* This function is implemented as the "Obtain Data Frame" command instead of
+		 * "Trigger Detection". If the Frame Rate is set to 0, triggerDetection is used instead */
+		write(wiringpi_fd, write_buf, 5);
+
+		/* Need to delay after every I2C command */
+		delay(100);
+	}
+
+    // Step 1: Read the serial stream until we see the beginning of the TF Mini header, or we timeout reading too many characters.
+	read(wiringpi_fd, response, 9);
+
+    for (int i=0; i<8; i++)
+    {
+		checksum += response[i];
+    }
+
+    // Step 2A: Compare checksum
+    // Last byte in the frame is an 8-bit checksum
+    if (checksum != response[8])
+    {
+        state = ERROR_SERIAL_BADCHECKSUM;
+        distance = -1;
+        strength = -1;
+        if (TFMINI_DEBUGMODE == 1) printf("ERROR: bad checksum. calculated = 0x%x, received = 0x%x, difference = 0x%x\n", checksum, response[8], response[8] - checksum);
+        return -1;
+    }
+
+    // Step 3: Interpret frame
+    uint16_t dist = (response[3] << 8) + response[2];
+    uint16_t st = (response[5] << 8) + response[4];
+    uint8_t reserved = response[6];
+    uint8_t originalSignalQuality = response[7];
+
+    // Step 4: Store values
+    distance = dist;
+    strength = st;
+    state = MEASUREMENT_OK;
+
+    // Return success
+    return 0;
 }

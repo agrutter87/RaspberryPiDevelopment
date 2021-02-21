@@ -6,31 +6,50 @@
  ***********************************************/
 int main(int argc, char *argv[])
 {
-	uint16_t dist = 0;
-	uint16_t strength = 0;
+	uint16_t uart_dist = 0;
+	uint16_t uart_strength = 0;
+	uint16_t i2c_dist = 0;
+	uint16_t i2c_strength = 0;
 	
-    /* Instantiate the TFMini class */
-    TFMini tfmini;
+	bool status;
+	
+    /* Instantiate the UART TFMini class */
+    TFMini tfmini_uart;
+	/* Instantiate the I2C TFMini class */
+	TFMini tfmini_i2c;
 
     printf("Device Controller starting\n");
 
-	printf("Starting TFMini...");
+	printf("Starting UART TFMini...");
 	/* Initialize the TFMini with the WiringPi API */
-	tfmini.begin(TFMINI_MODE_UART, 1);
+	tfmini_uart.begin(TFMINI_MODE_UART, 1);
+	tfmini_i2c.begin(TFMINI_MODE_I2C, 1);
 
 	/* Main loop */
 	while(1)
 	{
 		// Take one TF Mini distance measurement
-		bool status = tfmini.read(&dist, &strength);
+		status = tfmini_uart.getReadings(&uart_dist, &uart_strength);
 		if(status == true)
 		{
 			// Display the measurement
-			printf("%5d cm   sigstr: %5d\n", dist, strength);
+			printf("UART: %5d cm   sigstr: %5d\n", uart_dist, uart_strength);
 		}
 		else
 		{
-			printf("Error taking measurement!\n");
+			printf("UART: Error taking measurement!\n");
+		}
+
+		// Take one TF Mini distance measurement
+		status = tfmini_i2c.getReadings(&i2c_dist, &i2c_strength);
+		if(status == true)
+		{
+			// Display the measurement
+			printf("I2C:  %5d cm   sigstr: %5d\n", i2c_dist, i2c_strength);
+		}
+		else
+		{
+			printf("I2C:  Error taking measurement!\n");
 		}
 
 		// Wait some short time before taking the next measurement

@@ -2,13 +2,18 @@
 #include <stdint.h>
 /* Need to include IO functions for printf */
 #include <cstdio>
+/* Need to include for read/write */
+#include <unistd.h>
 /* Need to use Wiring Pi functions */
 #include <wiringPi.h>
-/* Need to user Wiring Pi Serial functions */
+/* Need to use Wiring Pi Serial functions */
 #include <wiringSerial.h>
+/* Need to use Wiring Pi I2C functions */
+#include <wiringPiI2C.h>
 
 // Defines
 #define TFMINI_BAUDRATE                   (115200)
+#define TFMINI_I2C_ADDRESS				  (0x10)
 #define TFMINI_DEBUGMODE                  (1)
 
 // The frame size is nominally 9 characters, but we don't include the first two 0x59's marking the start of the frame
@@ -42,7 +47,7 @@ class TFMini
     bool begin(unsigned int _mode, unsigned int _framerate_hz);
 
     // Data collection
-    bool read(uint16_t * _distance, uint16_t * _strength);
+    bool getReadings(uint16_t * _distance, uint16_t * _strength);
 
   private:
     /* Mode of device, UART or I2C */
@@ -61,7 +66,11 @@ class TFMini
     /* UART-only functions */
     void disableOutput(void);
     void enableOutput(void);
+	
+	/* Functions for triggering detection */
     void triggerDetection(void);
+	void triggerDetectionUART(void);
+	void triggerDetectionI2C(void);
 	
 	/* Functions for printing firmware version */
     void printFirmwareVersion(void);
