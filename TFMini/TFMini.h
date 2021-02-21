@@ -1,4 +1,12 @@
+/* Need to include for explicit size types */
 #include <stdint.h>
+/* Need to include IO functions for printf */
+#include <cstdio>
+/* Need to use Wiring Pi functions */
+#include <wiringPi.h>
+/* Need to user Wiring Pi Serial functions */
+#include <wiringSerial.h>
+
 // Defines
 #define TFMINI_BAUDRATE                   (115200)
 #define TFMINI_DEBUGMODE                  (1)
@@ -17,17 +25,9 @@
 #define ERROR_SERIAL_TOOMANYTRIES         (3)
 #define MEASUREMENT_OK                    (10)
 
-/* Minimal struct definition for required Arduino functions.
- * An instance of this needs to be defined and passed to the
- * begin function to provide functions for the TFMini class to use */
-struct Stream
-{
-    int    (* write)(uint8_t val);
-    int    (* available)(void);
-    int    (* read)(void);
-    void   (* flush)(void);
-    void   (* delay_ms)(unsigned long ms);
-};
+// Modes
+#define TFMINI_MODE_UART                  (0)
+#define TFMINI_MODE_I2C                   (1)
 
 //
 // Driver Class Definition
@@ -36,16 +36,18 @@ class TFMini
 {
   public:
     TFMini(void);
+	~TFMini(void);
 
     // Configuration
-    bool begin(Stream* _streamPtr, unsigned int framerate_hz);
+    bool begin(unsigned int _mode, unsigned int _framerate_hz);
 
     // Data collection
     uint16_t getDistance();
     uint16_t getRecentSignalStrength();
 
   private:
-    Stream* streamPtr;
+    unsigned int mode;
+    int wiringpi_fd;
     int state;
     uint16_t distance;
     uint16_t strength;

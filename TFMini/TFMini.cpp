@@ -1,42 +1,84 @@
 #include "TFMini.h"
-#include <iostream>
 
 TFMini::TFMini()
 {
     // Empty constructor
 }
 
+TFMini::~TFMini()
+{
+	switch(mode)
+	{
+		case TFMINI_MODE_UART:
+			/* Close WiringPi Serial before exit */
+			serialClose(wiringpi_fd);
+			break;
+	    case TFMINI_MODE_I2C:
+		    break;
+		default:
+		    break;
+	}
+}
+
 /********************************************************************************************
  * TFMini::begin
  *******************************************************************************************/
-bool TFMini::begin(Stream* _streamPtr, unsigned int framerate_hz)
+bool TFMini::begin(unsigned int _mode, unsigned int _framerate_hz)
 {
-    // Store reference to wiringPi file descriptor
-    streamPtr = _streamPtr;
-
+	mode = _mode;
+	bool status = true;
+	
     // Clear state
     distance = -1;
     strength = -1;
     state = READY;
 
-    // Disable output on startup to make it easier to parse init command responses
-    disableOutput();
+    /* Setup WiringPi */
+    wiringPiSetup();
 
-    // Wait to allow for clearing of buffer
-    streamPtr->delay_ms(100);
+    switch(mode)
+	{
+		case TFMINI_MODE_UART:
+			/* Open WiringPi Serial */
+			wiringpi_fd = serialOpen("/dev/serial0", 115200);
+			if(wiringpi_fd == -1)
+			{
+				status = false;
+				printf("Error opening serial port\n");
+			}
+		    break;
+		
+		case TFMINI_MODE_I2C:
+		    break;
+			
+		default:
+		    status = false;
+	        break;
+	}
+	
+	if(status == true)
+	{
+		printf("Serial port opened successfully\n");
 
-    // Print the firmware version
-    printFirmwareVersion();
+		// Disable output on startup to make it easier to parse init command responses
+		disableOutput();
 
-    // Configure device
-    setFrameRate(framerate_hz);
+		// Wait to allow for clearing of buffer
+		delay(100);
 
-    // Delay before beginning
-    streamPtr->delay_ms(1000);
+		// Print the firmware version
+		printFirmwareVersion();
 
-    enableOutput();
+		// Configure device
+		setFrameRate(_framerate_hz);
 
-    return true;
+		// Delay before beginning
+		delay(1000);
+
+		enableOutput();
+	}
+
+    return status;
 }
 
 /********************************************************************************************
@@ -86,12 +128,12 @@ uint16_t TFMini::getRecentSignalStrength()
  *******************************************************************************************/
 void TFMini::disableOutput()
 {
-    streamPtr->flush();
-    streamPtr->write((uint8_t)0x5A);
-    streamPtr->write((uint8_t)0x05);
-    streamPtr->write((uint8_t)0x07);
-    streamPtr->write((uint8_t)0x00);
-    streamPtr->write((uint8_t)0x66);
+    serialFlush(wiringpi_fd);
+    serialPutchar(wiringpi_fd, (unsigned char)0x5A);
+    serialPutchar(wiringpi_fd, (unsigned char)0x05);
+    serialPutchar(wiringpi_fd, (unsigned char)0x07);
+    serialPutchar(wiringpi_fd, (unsigned char)0x00);
+    serialPutchar(wiringpi_fd, (unsigned char)0x66);
 }
 
 /********************************************************************************************
@@ -99,12 +141,12 @@ void TFMini::disableOutput()
  *******************************************************************************************/
 void TFMini::enableOutput()
 {
-    streamPtr->flush();
-    streamPtr->write((uint8_t)0x5A);
-    streamPtr->write((uint8_t)0x05);
-    streamPtr->write((uint8_t)0x07);
-    streamPtr->write((uint8_t)0x01);
-    streamPtr->write((uint8_t)0x67);
+    serialFlush(wiringpi_fd);
+    serialPutchar(wiringpi_fd, (unsigned char)0x5A);
+    serialPutchar(wiringpi_fd, (unsigned char)0x05);
+    serialPutchar(wiringpi_fd, (unsigned char)0x07);
+    serialPutchar(wiringpi_fd, (unsigned char)0x01);
+    serialPutchar(wiringpi_fd, (unsigned char)0x67);
 }
 
 /********************************************************************************************
@@ -112,11 +154,11 @@ void TFMini::enableOutput()
  *******************************************************************************************/
 void TFMini::triggerDetection()
 {
-    streamPtr->flush();
-    streamPtr->write((uint8_t)0x5A);
-    streamPtr->write((uint8_t)0x04);
-    streamPtr->write((uint8_t)0x04);
-    streamPtr->write((uint8_t)0x62);
+    serialFlush(wiringpi_fd);
+    serialPutchar(wiringpi_fd, (unsigned char)0x5A);
+    serialPutchar(wiringpi_fd, (unsigned char)0x04);
+    serialPutchar(wiringpi_fd, (unsigned char)0x04);
+    serialPutchar(wiringpi_fd, (unsigned char)0x62);
 }
 
 /********************************************************************************************
@@ -131,22 +173,22 @@ void TFMini::setFrameRate(unsigned int framerate_hz)
     uint8_t response[6];
     uint8_t resp_checksum = 0;
 
-    streamPtr->flush();
-    streamPtr->write((uint8_t)0x5A);
-    streamPtr->write((uint8_t)0x06);
-    streamPtr->write((uint8_t)0x03);
-    streamPtr->write((uint8_t)(framerate_hz & 0xFF));
-    streamPtr->write((uint8_t)((framerate_hz >> 8) & 0xFF));
-    streamPtr->write((uint8_t)checksum);
+    serialFlush(wiringpi_fd);
+    serialPutchar(wiringpi_fd, (unsigned char)0x5A);
+    serialPutchar(wiringpi_fd, (unsigned char)0x06);
+    serialPutchar(wiringpi_fd, (unsigned char)0x03);
+    serialPutchar(wiringpi_fd, (unsigned char)(framerate_hz & 0xFF));
+    serialPutchar(wiringpi_fd, (unsigned char)((framerate_hz >> 8) & 0xFF));
+    serialPutchar(wiringpi_fd, (unsigned char)checksum);
 
     for (int i=0; i<6; i++)
     {
         // Read one character
-        while (!streamPtr->available())
+        while (!serialDataAvail(wiringpi_fd))
         {
             // wait for a character to become available
         }
-        response[i] = streamPtr->read();
+        response[i] = serialGetchar(wiringpi_fd);
 
         // Store running checksum
         if (i < 5)
@@ -176,20 +218,20 @@ void TFMini::printFirmwareVersion()
     uint8_t response[7];
     uint8_t checksum = 0;
 
-    streamPtr->flush();
-    streamPtr->write((uint8_t)0x5A);
-    streamPtr->write((uint8_t)0x04);
-    streamPtr->write((uint8_t)0x01);
-    streamPtr->write((uint8_t)0x5F);
+    serialFlush(wiringpi_fd);
+    serialPutchar(wiringpi_fd, (unsigned char)0x5A);
+    serialPutchar(wiringpi_fd, (unsigned char)0x04);
+    serialPutchar(wiringpi_fd, (unsigned char)0x01);
+    serialPutchar(wiringpi_fd, (unsigned char)0x5F);
 
     for (int i=0; i<7; i++)
     {
         // Read one character
-        while (!streamPtr->available())
+        while (!serialDataAvail(wiringpi_fd))
         {
             // wait for a character to become available
         }
-        response[i] = streamPtr->read();
+        response[i] = serialGetchar(wiringpi_fd);
 
         // Store running checksum
         if (i < 6)
@@ -227,9 +269,9 @@ int TFMini::takeMeasurement()
     // Step 1: Read the serial stream until we see the beginning of the TF Mini header, or we timeout reading too many characters.
     while(1)
     {
-        if(streamPtr->available())
+        if(serialDataAvail(wiringpi_fd))
         {
-            uint8_t curChar = streamPtr->read();
+            uint8_t curChar = serialGetchar(wiringpi_fd);
 
             if ((lastChar == 0x59) && (curChar == 0x59))
             {
@@ -263,11 +305,11 @@ int TFMini::takeMeasurement()
     for (int i=0; i<TFMINI_FRAME_SIZE; i++)
     {
         // Read one character
-        while (!streamPtr->available())
+        while (!serialDataAvail(wiringpi_fd))
         {
             // wait for a character to become available
         }
-        frame[i] = streamPtr->read();
+        frame[i] = serialGetchar(wiringpi_fd);
 
         // Store running checksum
         if (i < TFMINI_FRAME_SIZE-1)
