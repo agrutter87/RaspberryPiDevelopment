@@ -42,22 +42,39 @@ class TFMini
     bool begin(unsigned int _mode, unsigned int _framerate_hz);
 
     // Data collection
-    uint16_t getDistance();
-    uint16_t getRecentSignalStrength();
+    bool read(uint16_t * _distance, uint16_t * _strength);
 
   private:
+    /* Mode of device, UART or I2C */
     unsigned int mode;
+	/* File descriptor for either UART or I2C */
     int wiringpi_fd;
+	/* Device state, used for error handling */
     int state;
+	/* Last measured distance */
     uint16_t distance;
+	/* Last measured strength */
     uint16_t strength;
+	/* Device measurement framerate */
     unsigned int framerate;
 
-    // Low-level communication
-    void disableOutput();
-    void enableOutput();
-    void triggerDetection();
-    void printFirmwareVersion();
+    /* UART-only functions */
+    void disableOutput(void);
+    void enableOutput(void);
+    void triggerDetection(void);
+	
+	/* Functions for printing firmware version */
+    void printFirmwareVersion(void);
+	void printFirmwareVersionUART(void);
+	void printFirmwareVersionI2C(void);
+	
+	/* Functions for setting framerate */
     void setFrameRate(unsigned int framerate_hz);
-    int takeMeasurement();
+	void setFrameRateUART(unsigned int framerate_hz);
+	void setFrameRateI2C(unsigned int framerate_hz);
+	
+	/* Functions for taking measurements */
+    int takeMeasurement(void);
+	int takeMeasurementUART(void);
+	int takeMeasurementI2C(void);
 };

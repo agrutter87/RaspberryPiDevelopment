@@ -6,9 +6,9 @@
  ***********************************************/
 int main(int argc, char *argv[])
 {
-    /* Holds file descriptor for serial port */
-    int serial_fd = -1;
-
+	uint16_t dist = 0;
+	uint16_t strength = 0;
+	
     /* Instantiate the TFMini class */
     TFMini tfmini;
 
@@ -22,11 +22,16 @@ int main(int argc, char *argv[])
 	while(1)
 	{
 		// Take one TF Mini distance measurement
-		uint16_t dist = tfmini.getDistance();
-		uint16_t strength = tfmini.getRecentSignalStrength();
-
-		// Display the measurement
-		printf("%5d cm   sigstr: %5d\n", dist, strength);
+		bool status = tfmini.read(&dist, &strength);
+		if(status == true)
+		{
+			// Display the measurement
+			printf("%5d cm   sigstr: %5d\n", dist, strength);
+		}
+		else
+		{
+			printf("Error taking measurement!\n");
+		}
 
 		// Wait some short time before taking the next measurement
 		delay(1000);

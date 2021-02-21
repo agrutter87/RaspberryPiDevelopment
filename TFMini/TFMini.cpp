@@ -1,11 +1,11 @@
 #include "TFMini.h"
 
-TFMini::TFMini()
+TFMini::TFMini(void)
 {
     // Empty constructor
 }
 
-TFMini::~TFMini()
+TFMini::~TFMini(void)
 {
 	switch(mode)
 	{
@@ -82,9 +82,9 @@ bool TFMini::begin(unsigned int _mode, unsigned int _framerate_hz)
 }
 
 /********************************************************************************************
- * TFMini::getDistance
+ * TFMini::read
  *******************************************************************************************/
-uint16_t TFMini::getDistance()
+bool TFMini::read(uint16_t * _distance, uint16_t * _strength)
 {
     int numMeasurementAttempts = 0;
     while (takeMeasurement() != 0)
@@ -107,26 +107,20 @@ uint16_t TFMini::getDistance()
 
     if (state == MEASUREMENT_OK)
     {
-        return distance;
+		*_distance = distance;
+		*_strength = strength;
+        return true;
     }
     else
     {
-        return -1;
+        return false;
     }
-}
-
-/********************************************************************************************
- * TFMini::getRecentSignalStrength
- *******************************************************************************************/
-uint16_t TFMini::getRecentSignalStrength()
-{
-    return strength;
 }
 
 /********************************************************************************************
  * TFMini::disableOutput
  *******************************************************************************************/
-void TFMini::disableOutput()
+void TFMini::disableOutput(void)
 {
     serialFlush(wiringpi_fd);
     serialPutchar(wiringpi_fd, (unsigned char)0x5A);
@@ -139,7 +133,7 @@ void TFMini::disableOutput()
 /********************************************************************************************
  * TFMini::enableOutput
  *******************************************************************************************/
-void TFMini::enableOutput()
+void TFMini::enableOutput(void)
 {
     serialFlush(wiringpi_fd);
     serialPutchar(wiringpi_fd, (unsigned char)0x5A);
@@ -152,7 +146,7 @@ void TFMini::enableOutput()
 /********************************************************************************************
  * TFMini::triggerDetection
  *******************************************************************************************/
-void TFMini::triggerDetection()
+void TFMini::triggerDetection(void)
 {
     serialFlush(wiringpi_fd);
     serialPutchar(wiringpi_fd, (unsigned char)0x5A);
@@ -165,6 +159,24 @@ void TFMini::triggerDetection()
  * TFMini::setFrameRate
  *******************************************************************************************/
 void TFMini::setFrameRate(unsigned int framerate_hz)
+{
+	switch(mode)
+	{
+		case TFMINI_MODE_UART:
+			setFrameRateUART(framerate_hz);
+			break;
+		case TFMINI_MODE_I2C:
+			setFrameRateI2C(framerate_hz);
+			break;
+		default:
+			break;
+	}
+}
+
+/********************************************************************************************
+ * TFMini::setFrameRateUART
+ *******************************************************************************************/
+void TFMini::setFrameRateUART(unsigned int framerate_hz)
 {
     uint8_t lsb = (uint8_t)framerate_hz;
     uint8_t msb = (uint8_t)(framerate_hz >> 8);
@@ -211,9 +223,35 @@ void TFMini::setFrameRate(unsigned int framerate_hz)
 }
 
 /********************************************************************************************
+ * TFMini::setFrameRateI2C
+ *******************************************************************************************/
+void TFMini::setFrameRateI2C(unsigned int framerate_hz)
+{
+	return;
+}
+
+/********************************************************************************************
  * TFMini::printFirmwareVersion
  *******************************************************************************************/
-void TFMini::printFirmwareVersion()
+void TFMini::printFirmwareVersion(void)
+{
+	switch(mode)
+	{
+		case TFMINI_MODE_UART:
+			printFirmwareVersionUART();
+			break;
+		case TFMINI_MODE_I2C:
+			printFirmwareVersionI2C();
+			break;
+		default:
+			break;
+	}
+}
+
+/********************************************************************************************
+ * TFMini::printFirmwareVersionUART
+ *******************************************************************************************/
+void TFMini::printFirmwareVersionUART(void)
 {
     uint8_t response[7];
     uint8_t checksum = 0;
@@ -253,9 +291,38 @@ void TFMini::printFirmwareVersion()
 }
 
 /********************************************************************************************
+ * TFMini::printFirmwareVersionI2C
+ *******************************************************************************************/
+void TFMini::printFirmwareVersionI2C(void)
+{
+	return;
+}
+
+/********************************************************************************************
  * TFMini::takeMeasurement
  *******************************************************************************************/
-int TFMini::takeMeasurement()
+int TFMini::takeMeasurement(void)
+{
+	int ret = -1;
+	switch(mode)
+	{
+		case TFMINI_MODE_UART:
+			ret = takeMeasurementUART();
+			break;
+		case TFMINI_MODE_I2C:
+			ret = takeMeasurementI2C();
+			break;
+		default:
+			break;
+	}
+	
+	return ret;
+}
+
+/********************************************************************************************
+ * TFMini::takeMeasurementUART
+ *******************************************************************************************/
+int TFMini::takeMeasurementUART(void)
 {
     int numCharsRead = 0;
     uint8_t lastChar = 0x00;
@@ -343,4 +410,12 @@ int TFMini::takeMeasurement()
 
     // Return success
     return 0;
+}
+
+/********************************************************************************************
+ * TFMini::takeMeasurementI2C
+ *******************************************************************************************/
+int TFMini::takeMeasurementI2C(void)
+{
+	return 0;
 }
